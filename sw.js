@@ -1,6 +1,4 @@
-const CACHE_NAME = 'wtkl-offline-cdn-v1';
-
-// Notice the CDN links here!
+const CACHE_NAME = 'wtkl-offline-cdn-v2';
 const CDN_URL = 'https://cdn.jsdelivr.net/gh/OnyxSoul-1/WTKL-webport@main/';
 
 const ASSETS = [
@@ -14,18 +12,12 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS);
-    })
-  );
+  e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
 });
 
 self.addEventListener('fetch', (e) => {
   e.respondWith(
     caches.match(e.request).then((response) => {
-      // If the file is in the cache, serve it (works offline).
-      // If not, fetch it from the internet (CDN).
       return response || fetch(e.request);
     })
   );
