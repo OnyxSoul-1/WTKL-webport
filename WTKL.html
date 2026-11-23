@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<link rel="stylesheet" href="./style.css"/>
+<!-- Yandex SDK -->
+<script src="https://yandex.ru/games/sdk/v2"></script>
+<style>
+    html, body {
+        padding: 0; margin: 0; overflow: hidden;
+        background: #000000; color: #ffffff;
+        font-family: 'Courier New', Courier, monospace;
+        height: 100%;
+        -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    }
+    canvas:focus { outline: none; }
+    #unity-container { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+    #unity-canvas { width: 100%; height: 100%; background: #000; display: none; }
+    #custom-loader {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: #000000; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; z-index: 1000;
+        transition: opacity 0.3s ease-out;
+    }
+    .title { position: absolute; top: 20px; font-size: 14px; letter-spacing: 4px; color: #888888; text-transform: uppercase; }
+    .credit { position: absolute; bottom: 20px; font-size: 14px; color: #888888; letter-spacing: 1px; }
+    
+    /* RAINBOW ANIMATION */
+    .rainbow-text {
+        background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3);
+        background-size: 300%;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: bold;
+        text-decoration: none;
+        animation: rainbow-anim 3s linear infinite;
+    }
+    @keyframes rainbow-anim {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 100% 50%; }
+    }
+
+    .loading-box { display: flex; flex-direction: column; align-items: center; width: 300px; }
+    #status-text { font-size: 12px; color: #aaaaaa; margin-bottom: 15px; text-align: center; height: 15px; }
+    .progress-container { width: 100%; height: 2px; background: #222222; }
+    #progress-bar { height: 100%; width: 0%; background: #ffffff; transition: width 0.1s linear; }
+</style>
+</head>
+<body class="dark">
+
+<div id="custom-loader">
+    <div class="title">War The Knights</div>
+    <div class="loading-box">
+        <div id="status-text">Initializing systems...</div>
+        <div class="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+    </div>
+    <!-- YOUR NAME AND LINK HERE -->
+    <div class="credit">Port by <a href="https://github.com/OnyxSoul-1" target="_blank" class="rainbow-text">Onyx$oul-1</a></div>
+</div>
+
+<div id="unity-container" class="unity-desktop">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+</div>
+
+<script>
+    // --- REQUIRED GLOBAL VARIABLES ---
+    var cloudSaves = 'no data';
+    var environmentData = '{"language":"en","domain":"com","deviceType":"desktop","isMobile":false,"isDesktop":true,"isTablet":false,"isTV":false,"appID":"offline","browserLang":"en","payload":"","platform":"web"}';
+    var playerData = 'no data';
+    let player = null;
+    let ysdk = null;
+    let initGame = false;
+    const NO_DATA = 'no data';
+
+    // --- SERVICE WORKER FOR OFFLINE PLAY ---
+    if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log("SW failed:", err));
+    }
+
+    // --- CDN LINKS ---
+    const buildUrl = "https://cdn.jsdelivr.net/gh/OnyxSoul-1/WTKL-webport@main/";
+    const loaderUrl = buildUrl + "War%20The%20Knights%20Battle%20Arena%20Swords%203D.loader.js";
+    
+    const config = {
+        dataUrl: buildUrl + "War%20The%20Knights%20Battle%20Arena%20Swords%203D.data.unityweb",
+        frameworkUrl: buildUrl + "War%20The%20Knights%20Battle%20Arena%20Swords%203D.framework.js.unityweb",
+        codeUrl: buildUrl + "War%20The%20Knights%20Battle%20Arena%20Swords%203D.wasm.unityweb",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "Bullet _ Rezero",
+        productName: "WTKL",
+        productVersion: "1.0"
+    };
+
+    const canvas = document.querySelector("#unity-canvas");
+    const loaderUI = document.querySelector("#custom-loader");
+    const progressBar = document.querySelector("#progress-bar");
+    const statusText = document.querySelector("#status-text");
+
+    let ygGameInstance = null;
+
+    document.addEventListener('contextmenu', event => event.preventDefault());
+    function FocusGame() { window.focus(); canvas.focus(); }
+    window.addEventListener('pointerdown', () => FocusGame());
+    window.addEventListener('touchstart', () => FocusGame());
+
+    // --- MESSAGING TO UNITY ---
+    function YG2Instance(method, arg) {
+        if (ygGameInstance == null) return;
+        try {
+            if (arg !== undefined) ygGameInstance.SendMessage('YG2Instance', method, arg);
+            else ygGameInstance.SendMessage('YG2Instance', method);
+        } catch(e) {}
+    }
+
+    // --- AD BYPASS TRICKS (ALL VARIATIONS) ---
+    function InitYSDK() { /* Disabled */ }
+    function InitGame() { initGame = true; }
+    
+    function SaveCloud(jsonData, flush) {
+        if (player == null) return;
+        try { player.setData({ saves: [jsonData] }, flush); } catch (e) {}
+    }
+    function LoadCloud() {}
+
+    // The game called "RewardedShow". We define it here!
+    function RewardedShow(id) {
+        console.log("Bypassing Ad! Granting reward for ID:", id);
+        YG2Instance('OpenRewardedAdv');
+        setTimeout(() => {
+            YG2Instance('RewardAdv', id || '0'); // Give reward
+            YG2Instance('CloseRewardedAdv');     // Close UI
+        }, 300);
+    }
+
+    // Keeping this one just in case the game calls it elsewhere
+    function RewardedAdvShow(id) {
+        RewardedShow(id);
+    }
+
+    function InterAdvShow() {
+        console.log("Interstitial Ad bypassed.");
+    }
+
+    function OpenAuthDialog() {}
+
+    // --- START UNITY ---
+    const script = document.createElement("script");
+    script.src = loaderUrl;
+    script.onload = () => {
+        statusText.innerText = "Downloading from CDN...";
+        
+        createUnityInstance(canvas, config, (progress) => {
+            const percent = Math.round(progress * 100);
+            statusText.innerText = `Loading... ${percent}%`;
+            progressBar.style.width = `${percent}%`;
+        }).then((unityInstance) => {
+            ygGameInstance = unityInstance;
+            
+            // Hide loading screen
+            loaderUI.style.opacity = '0';
+            setTimeout(() => {
+                loaderUI.style.display = 'none';
+                canvas.style.display = 'block';
+            }, 300);
+
+        }).catch((message) => {
+            statusText.innerText = "Error: " + message;
+            console.error(message);
+        });
+    };
+    document.body.appendChild(script);
+</script>
+</body>
+</html>
